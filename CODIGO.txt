@@ -1,0 +1,229 @@
+
+	
+inner join
+
+/*
+  ---------------------------------------------------------------------------
+  -------------------------- MOTIVO ALTA OBITOS -----------------------------
+  ---------------------------------------------------------------------------
+*/
+LOAD 
+	PK_MOT_ALTA AS PK_MOT_ALTA_OPERATORIA,
+	TP_MOT_ALTA AS TP_MOT_ALTA_OPERATORIA
+FROM
+	[$(vPathQVDs)MotAltaMortalidadeOperatoria.QVD](qvd)
+WHERE
+	TP_MOT_ALTA = 'OBITO';
+
+inner join
+
+/*
+  ---------------------------------------------------------------------------
+  -------------------------- CIRURGIA AVISO ---------------------------------
+  ---------------------------------------------------------------------------
+*/
+LOAD 
+	PK_AVISO_CIRURGIA
+FROM
+	[$(vPathQVDs)CirurgiaAvisoMortalidadeOperatoria.QVD](qvd)
+WHERE
+	SN_CIRURGIA_PRINCIPAL = 'S';
+
+/*
+  ---------------------------------------------------------------------------
+  -------------------------- FILTRA OS DADOS --------------------------------
+  ---------------------------------------------------------------------------
+*/
+
+MortalidadeOperatoria:
+LOAD
+	MID(PK_ATENDIMENTO_OPERATORIA,1,3) &'|'& (DT_HR_PROCED_CIRURGICO - FRAC(DT_HR_PROCED_CIRURGICO)) AS PK_MORTAL_OPER_HOSP_CALEND,
+	DT_HR_ALTA_OPERATORIA  																			 AS DT_HR_ALTA_OPERATORIA,
+	DT_HR_PROCED_CIRURGICO                                                                           AS DT_HR_PROCED_CIRURGICO,
+	PK_ATENDIMENTO_OPERATORIA	
+RESIDENT 
+	MortalidadeOperatoriaTmp;
+
+DROP TABLE MortalidadeOperatoriaTmp;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+MOTIVOS_ALTA_OPER_TMP:
+LOAD 
+	PK_MOT_ALTA AS PK_ALTA_OPER,
+	TP_MOT_ALTA AS TP_ALTA_OPER
+RESIDENT 
+	MOTIVOS_ALTA_TMP 
+WHERE 
+	TP_MOT_ALTA = 'OBITO';
+
+/****************************************
+	CARREGA OS ATENDIMENTOS FILTRADO
+****************************************/
+ATENDIMENTOS_OBITOS_TMP:
+LOAD
+	MID(FILENAME(),10,3) & CD_ATENDIMENTO AS PK_ATENDIMENTO,
+	MID(FILENAME(),10,3) & CD_MOT_ALT     AS PK_ALTA_OPER,
+	MID(FILENAME(),10,3)                  AS PK_HOSPITAL,
+	DT_ALTA + FRAC(HR_ALTA)               AS DT_HR_ALTA	
+FROM
+	[$(V_PATH_STAGE)Atendime_H*.qvd](qvd)
+WHERE
+	TP_ATENDIMENTO = 'I' AND YEAR(DT_ATENDIMENTO) > 2009 AND LEN(DT_ALTA) > 0 	
+	AND EXISTS( PK_ALTA_OPER , MID(FILENAME(),10,3) & CD_MOT_ALT );
+
+/**************************** 
+	CARREGA CIRURGIA AVISO
+****************************/
+CIRURGIA_AVISO_TMP:
+LOAD 
+	MID(FILENAME(),12,3) & CD_AVISO_CIRURGIA AS PK_AVISO_CIRURGIA,
+	SN_PRINCIPAL                             AS SN_CIRURGIA_PRINCIPAL
+FROM
+	[$(V_PATH_STAGE)CirurAviso_H*.QVD](qvd)
+WHERE
+	SN_PRINCIPAL = 'S';
+	
+
+
+
+AVISO_CIRURGIA_TMP:
+LOAD
+	MID(FILENAME(),10,3) & CD_ATENDIMENTO     AS PK_ATENDIMENTO,
+	MID(FILENAME(),10,3) & CD_AVISO_CIRURGIA  AS PK_AVISO_CIRURGIA,
+	TP_SITUACAO                               AS TP_SITUACAO_CIRURGIA,
+    IF( NOT ISNULL(DT_REALIZACAO) , NUM(DT_REALIZACAO) , NUM(DT_AVISO_CIRURGIA)) AS DT_HR_PROCED_CIRURGICO
+FROM
+	[$(V_PATH_STAGE)AvisoCir_H*.QVD](qvd)
+WHERE
+	TP_SITUACAO = 'R'
+	AND EXISTS( CD_AVISO_CIRURGIA , MID(FILENAME(),10,3) & CD_AVISO_CIRURGIA )
+	AND EXISTS( PK_ATENDIMENTO    , MID(FILENAME(),10,3) & CD_ATENDIMENTO );
+
+
+
+// ARMAZENA NOS QVD'S
+STORE ATENDIMENTOS_OBITOS_TMP INTO [$(V_PATH_QVD)AtendimentoMortalidadeOperatoria.QVD];
+STORE MOTIVOS_ALTA_TMP        INTO [$(V_PATH_QVD)MotAltaMortalidadeOperatoria.QVD];
+STORE AVISO_CIRURGIA_TMP      INTO [$(V_PATH_QVD)AvisoCirurgiaMortalidadeOperatoria.QVD];
+STORE CIRURGIA_AVISO_TMP      INTO [$(V_PATH_QVD)CirurgiaAvisoMortalidadeOperatoria.QVD];
+
+// DROP AS TABELAS
+DROP TABLE ATENDIMENTOS_OBITOS_TMP;
+DROP TABLE AVISO_CIRURGIA_TMP;
+DROP TABLE CIRURGIA_AVISO_TMP;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+MortalidadeOperatoriaTmp:
+LOAD 
+	PK_ATENDIMENTO AS PK_ATENDIMENTO_OPERATORIA, 
+    PK_MOT_ALTA    AS PK_MOT_ALTA_OPERATORIA, 
+    PK_HOSPITAL,      
+    DT_HR_ALTA     AS DT_HR_ALTA_OPERATORIA  
+FROM
+	[$(vPathQVDs)AtendimentoMortalidadeOperatoria.QVD](qvd);
+
+inner join
+
+/*
+  ---------------------------------------------------------------------------
+  -------------------------- AVISO CIRURGIA ---------------------------------
+  ---------------------------------------------------------------------------
+*/
+LOAD 	
+	PK_ATENDIMENTO          AS PK_ATENDIMENTO_OPERATORIA, 
+    PK_AVISO_CIRURGIA, 
+    DT_HR_PROCED_CIRURGICO,
+    TP_SITUACAO_CIRURGIA    
+FROM
+	[$(vPathQVDs)AvisoCirurgiaMortalidadeOperatoria.QVD](qvd);
+
+inner join
+
+/*
+  ---------------------------------------------------------------------------
+  -------------------------- MOTIVO ALTA OBITOS -----------------------------
+  ---------------------------------------------------------------------------
+*/
+LOAD 
+	PK_MOT_ALTA AS PK_MOT_ALTA_OPERATORIA,
+	TP_MOT_ALTA AS TP_MOT_ALTA_OPERATORIA
+FROM
+	[$(vPathQVDs)MotAltaMortalidadeOperatoria.QVD](qvd);
+
+inner join
+
+/*
+  ---------------------------------------------------------------------------
+  -------------------------- CIRURGIA AVISO ---------------------------------
+  ---------------------------------------------------------------------------
+*/
+LOAD 
+	PK_AVISO_CIRURGIA,
+	SN_CIRURGIA_PRINCIPAL
+FROM
+	[$(vPathQVDs)CirurgiaAvisoMortalidadeOperatoria.QVD](qvd);
+
+/*
+  ---------------------------------------------------------------------------
+  -------------------------- FILTRA OS DADOS --------------------------------
+  ---------------------------------------------------------------------------
+*/
+
+MortalidadeOperatoria:
+LOAD
+	PK_HOSPITAL &'|'& (DT_HR_PROCED_CIRURGICO - FRAC(DT_HR_PROCED_CIRURGICO)) AS PK_MORTAL_OPER_HOSP_CALEND,
+	PK_HOSPITAL,
+	PK_ATENDIMENTO_OPERATORIA,
+	SN_CIRURGIA_PRINCIPAL,
+	TP_SITUACAO_CIRURGIA,
+	TP_MOT_ALTA_OPERATORIA,
+	MAX(DT_HR_PROCED_CIRURGICO) AS DT_HR_PROCED_CIRURGICO
+RESIDENT 
+	MortalidadeOperatoriaTmp
+Group BY
+	PK_HOSPITAL &'|'& (DT_HR_PROCED_CIRURGICO - FRAC(DT_HR_PROCED_CIRURGICO)),
+	PK_HOSPITAL,
+	PK_ATENDIMENTO_OPERATORIA,
+	SN_CIRURGIA_PRINCIPAL,
+	TP_SITUACAO_CIRURGIA,
+	TP_MOT_ALTA_OPERATORIA,
+	DT_HR_ALTA_OPERATORIA;
+
+DROP TABLE MortalidadeOperatoriaTmp;
